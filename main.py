@@ -66,4 +66,4 @@ async def handle(request: web.Request, handler):
 app = web.Application()
 app.middlewares.append(handle)
 
-web.run_app(app)
+web.run_app(app, port=80)
