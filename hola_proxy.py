@@ -46,7 +46,8 @@ async def vpn_countries():
             return await r.json()
 
 
-
+# exclude = "exclude_host1,exclude_host2,exclude_host3"
+# exclude ex = "zagent2645.hola.org,zagent2640.hola.org,zagent734.hola.org"
 async def get_proxy(country: str = "us", proxy=None, exclude=None):
     EXT_VER = await get_ver()
     user_uuid = uuid.uuid4().hex
