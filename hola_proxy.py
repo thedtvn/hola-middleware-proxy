@@ -1,24 +1,27 @@
 import re
+import time
 import uuid
 import random
 import aiohttp
-import asyncio
-import xml.etree.ElementTree as ET
 
 from yarl import URL
 
-USER_AGENT = "Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36"
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 EXT_BROWSER = "chrome"
 PRODUCT = "cws"
 CCGI_URL = "https://client.hola.org"
 
+
 async def get_ver():
     async with aiohttp.ClientSession() as s:
-        async with s.get("https://clients2.google.com/service/update2/crx", params={"acceptformat": ["crx2,crx3"], "prodversion": ["113.0"], "x": ["id=gkojfkhlekighikafcpjkiklfbnlmeio&uc="]}) as r:
+        async with s.get("https://clients2.google.com/service/update2/crx",
+                         params={"acceptformat": ["crx2,crx3"], "prodversion": ["113.0"],
+                                 "x": ["id=gkojfkhlekighikafcpjkiklfbnlmeio&uc="]}) as r:
             response_text = await r.text()
             return re.findall("version=\"(.+?)\"", response_text)[1]
 
-async def background_init(user_id, EXT_VER):
+
+async def background_init(user_id, EXT_VER, proxy):
     post_data = {
         "login": "1",
         "ver": EXT_VER,
@@ -27,8 +30,11 @@ async def background_init(user_id, EXT_VER):
         "uuid": user_id,
     }
     async with aiohttp.ClientSession(base_url=CCGI_URL, headers={"User-Agent": USER_AGENT}) as s:
-        async with s.post("/client_cgi/background_init", params=query_string, data=post_data) as r:
-            return await r.json()
+        async with s.post("/client_cgi/background_init", params=query_string, data=post_data, proxy=proxy) as r:
+            data = await r.json()
+            print(data)
+            return data
+
 
 async def vpn_countries():
     EXT_VER = await get_ver()
@@ -39,24 +45,39 @@ async def vpn_countries():
         async with s.post("/client_cgi/vpn_countries.json", params=query_string) as r:
             return await r.json()
 
-async def get_proxy(types_connect:str ="direct", country:str = "us"):
+
+
+async def get_proxy(country: str = "us", proxy=None, exclude=None):
     EXT_VER = await get_ver()
     user_uuid = uuid.uuid4().hex
-    username = "user-uuid-"+user_uuid
-    session_key = (await background_init(user_uuid, EXT_VER))["key"]
+    username = f"user-uuid-{user_uuid}-is_prem-0"
+    session_key = (await background_init(user_uuid, EXT_VER, proxy))["key"]
+    ping_id = random.random()
     pram = {
-        "country": country,
+        "country": country.lower(),
+        "src_country": country.upper(),
         "limit": 3,
-        "ping_id": random.random(),
+        "ping_id": ping_id,
         "ext_ver": EXT_VER,
         "browser": EXT_BROWSER,
         "product": PRODUCT,
         "uuid": user_uuid,
         "session_key": session_key,
         "is_premium": 0,
+        "exclude": int(bool(exclude))
+    }
+    data = {
+        "uuid": user_uuid,
+        "session_key": session_key,
+        "install_ts": str(time.time() * 1000),
+        "install_ver": EXT_VER,
+        "ping_id": str(ping_id),
+        "exclude": exclude
     }
     async with aiohttp.ClientSession(base_url=CCGI_URL, headers={"User-Agent": USER_AGENT}) as s:
-        async with s.post("/client_cgi/zgettunnels", params=pram) as r:
+        async with s.post("/client_cgi/zgettunnels", params=pram, data=data, proxy=proxy) as r:
             data = await r.json()
-    ip_list = [URL.build(scheme=i[1], host=i[0], port=data["port"][types_connect], user=username, password=data["agent_key"]) for i in data["protocol"].items()]
+            print(data)
+    ip_list = [URL.build(scheme=i[1], host=i[0], port=24241, user=username, password=data["agent_key"]) for i in
+               data["protocol"].items()]
     return ip_list
